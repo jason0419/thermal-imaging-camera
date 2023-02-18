@@ -1,6 +1,7 @@
 #ifndef HEADER_H
 #define HEADER_H
 void readTempValues();
+void filterTempValues(float);
 void interpolate();
 float lerp(float, float, float);
 void drawPicture();
