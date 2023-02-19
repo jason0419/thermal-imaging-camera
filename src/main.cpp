@@ -98,7 +98,7 @@ void readTempValues() {
   {
     uint16_t mlx90640Frame[834];
     int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
-    Serial.print(status);Serial.print(", ");
+    // Serial.print(status);Serial.print(", ");
     if (status < 0)
     {
       Serial.print("GetFrame Error: ");
@@ -108,12 +108,13 @@ void readTempValues() {
 
     float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640);
     float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640);
-    if(vdd<3){
+
+    float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
+    // Serial.print(vdd);Serial.print(", ");Serial.print(Ta);Serial.print(", ");Serial.print(tr);Serial.println("");
+    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, EMMISIVITY, tr, tempValues_raw);
+    if((vdd<2.9) || (Ta>50)){
       ESP.restart();
     }
-    float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
-    Serial.print(vdd);Serial.print(", ");Serial.print(Ta);Serial.print(", ");Serial.print(tr);Serial.println("");
-    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, EMMISIVITY, tr, tempValues_raw);
   }
 }
 
