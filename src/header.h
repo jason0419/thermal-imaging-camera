@@ -1,6 +1,9 @@
 #ifndef HEADER_H
 #define HEADER_H
 
+#define PIN_SDA 21
+#define PIN_SCL 22
+
 void setup_mlx90640();
 void initialize_imageArray();
 void readTempValues();

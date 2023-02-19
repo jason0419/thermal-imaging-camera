@@ -39,7 +39,7 @@ uint16_t *imageData = NULL;
 
 
 void setup_mlx90640(){
-  Wire.begin();
+  Wire.begin(PIN_SDA, PIN_SCL);
   Wire.setClock(400000); // Increase I2C clock speed to 400kHz
   Wire.beginTransmission((uint8_t)MLX90640_address);
   if (Wire.endTransmission() != 0) {
