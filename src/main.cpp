@@ -8,16 +8,7 @@
 #include "header.h"
 
 #define EMMISIVITY 0.98
-#define INTERPOLATE false
-
-// #define C_BLUE Display.color565(0,0,255)
-// #define C_RED Display.color565(255,0,0)
-// #define C_GREEN Display.color565(0,255,0)
-// #define C_WHITE Display.color565(255,255,255)
-// #define C_BLACK Display.color565(0,0,0)
-// #define C_LTGREY Display.color565(200,200,200)
-// #define C_DKGREY Display.color565(80,80,80)
-// #define C_GREY Display.color565(127,127,127)
+#define INTERPOLATE true
 
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
@@ -27,38 +18,24 @@ const byte MLX90640_address = 0x33; //Default 7-bit unshifted address of the MLX
 paramsMLX90640 mlx90640;
 
 TFT_eSPI Display = TFT_eSPI();
+TFT_eSprite image = TFT_eSprite(&Display);
 
 // Added for measure Temp
 boolean measure = true;
 float centerTemp;
-unsigned long tempTime = millis();
-unsigned long tempTime2 = 0;
 
 // start with some initial colors
-float minTemp = 15.0;
+float minTemp = 25.0;
 float maxTemp = 35.0;
 
-
-// variables for interpolated colors
-byte red, green, blue;
-
-// variables for row/column interpolation
-float intPoint, val, a, b, c, d, ii;
-int x, y, i, j;
-
 // Output size
-#define OUTPUT_SCALE 2
+#define OUTPUT_SCALE 7
+#define OUTPUT_WIDTH 32 * OUTPUT_SCALE
+#define OUTPUT_HEIGHT 24 * OUTPUT_SCALE
 
-#define O_WIDTH 32 * OUTPUT_SCALE
-#define O_HEIGHT 24 * OUTPUT_SCALE
-
-// array for the 32 x 24 measured tempValues
-static float tempValues[32*24];
-// float interpolatedTempValues[32*OUTPUT_SCALE*24*OUTPUT_SCALE];
-
-
-// float **interpolated = NULL;
-// float *interpolatedTempValues = NULL;
+// array for the 32 x 24 measured tempValues_raw
+float tempValues_raw[32*24];
+int16_t tempValues[32*24];
 uint16_t *imageData = NULL;
 
 void setup_display(){
@@ -86,9 +63,7 @@ void setup_mlx90640(){
   if (status != 0) Serial.println("Failed to load system parameters");
   status = MLX90640_ExtractParameters(eeMLX90640, &mlx90640);
   if (status != 0) Serial.println("Parameter extraction failed");
-  // Set refresh rate
-  MLX90640_SetRefreshRate(MLX90640_address, 0x05); // Set rate to 8Hz effective - Works at 800kHz
-  // Once EEPROM has been read at 400kHz we can increase
+  MLX90640_SetRefreshRate(MLX90640_address, 0x05);
   Wire.setClock(800000);
 }
 
@@ -97,34 +72,25 @@ void setup() {
   setup_display();
   setup_mlx90640();
 
-  // // Prepare interpolated array
-  // interpolated = (float **)malloc(O_HEIGHT * sizeof(float *));
-  // for (int i=0; i<O_HEIGHT; i++) {
-  //   interpolated[i] = (float *)malloc(O_WIDTH * sizeof(float));
-  // }
-
-  // Prepare interpolated array
-  // interpolatedTempValues = (float *)malloc(O_WIDTH * O_HEIGHT * sizeof(float));
+  // generate colormap with cutoff points
+  generate_colormap(64, 128, 192);
 
   // Prepare imageData array
-  imageData = (uint16_t *)malloc(O_WIDTH * O_HEIGHT * sizeof(uint16_t));
-
-  // get the cutoff points for the color interpolation routines
-  // note this function called when the temp scale is changed
-  setAbcd();
+  imageData = (uint16_t *)malloc(OUTPUT_WIDTH * OUTPUT_HEIGHT * sizeof(uint16_t));
+  
   drawLegend();
 }
 
 
 void loop() {
-  tempTime = millis();
   readTempValues();
   filterTempValues(0.5);
+  convertTempValues();
   setTempScale();
+  bilinear_interpolation(tempValues, imageData);
   drawPicture();
   drawMeasurement();
 }
-
 
 // Read pixel data from MLX90640.
 void readTempValues() {
@@ -132,144 +98,89 @@ void readTempValues() {
   {
     uint16_t mlx90640Frame[834];
     int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
+    Serial.print(status);Serial.print(", ");
     if (status < 0)
     {
       Serial.print("GetFrame Error: ");
       Serial.println(status);
+      ESP.restart();
     }
 
     float vdd = MLX90640_GetVdd(mlx90640Frame, &mlx90640);
     float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640);
-
+    if(vdd<3){
+      ESP.restart();
+    }
     float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
-
-    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, EMMISIVITY, tr, tempValues);
+    Serial.print(vdd);Serial.print(", ");Serial.print(Ta);Serial.print(", ");Serial.print(tr);Serial.println("");
+    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, EMMISIVITY, tr, tempValues_raw);
   }
 }
 
 void filterTempValues(float alpha){
-  static float previous_tempValues[32*24];
+  static float previous_tempValues_raw[32*24];
   for (int i = 0; i < 32*24; i++){
-    tempValues[i] = previous_tempValues[i] * (1-alpha) + tempValues[i] * alpha;
-    previous_tempValues[i] = tempValues[i];
+    tempValues_raw[i] = previous_tempValues_raw[i] * (1-alpha) + tempValues_raw[i] * alpha;
+    previous_tempValues_raw[i] = tempValues_raw[i];
   }
 }
 
-// int row;
-// float temp, temp2;
-
-// void interpolate() {
-//   for (row=0; row<24; row++) {
-//     for (x=0; x<O_WIDTH; x++) {
-//       temp  = tempValues[(31 - (x/7)) + (row*32) + 1];
-//       temp2 = tempValues[(31 - (x/7)) + (row*32)];
-//       interpolated[row*7][x] = lerp(temp, temp2, x%7/7.0);
-//     }
-//   }
-//   for (x=0; x<O_WIDTH; x++) {
-//     for (y=0; y<O_HEIGHT; y++) {
-//       temp  = interpolated[y-y%7][x];
-//       temp2 = interpolated[min((y-y%7)+7, O_HEIGHT-7)][x];
-//       interpolated[y][x] = lerp(temp, temp2, 1);//y%7/7.0);
-//     }
-//   }
-// }
-
-// Linear interpolation
-float lerp(float v0, float v1, float t) {
-  return v0 + t * (v1 - v0);
-}
-
-// void interpolation(){
-
-//   for (int col = 0; col < 32; col++){
-//     for (int row = 0; row < 24; row++){
-//       interpolatedTempValues[row*OUTPUT_SCALE*32+col*OUTPUT_SCALE] = tempValues[row*32+col];
-//     }
-//   }
-
-//   for (int row = 0; row < 24; row++){
-//     for (int col = 0; col < 32*OUTPUT_SCALE; col++){
-//       if(col%OUTPUT_SCALE != 0){
-//         interpolatedTempValues[row*OUTPUT_SCALE*32+col*OUTPUT_SCALE] = map(((col/OUTPUT_SCALE) - int(col/OUTPUT_SCALE))*100, 0, 100, tempValues[int(col/OUTPUT_SCALE)]*100, tempValues[int(col/OUTPUT_SCALE)+1]*100) / 100.0;
-//       }
-//     }
-//   }
-
-// }
-
-int map_f(float in, float a, float b)
-{
-    if (in < a)
-        return 0;
-
-    if (in > b)
-        return 255;
-
-    return (int)(in - a) * 255 / (b - a);
-}
-
-//Transform 32*24 to 320 * 240 pixel
-void interpolation(float *data, uint16_t *out){
-  for (uint8_t h = 0; h < 24; h++){
-    for (uint8_t w = 0; w < 32; w++){
-      out[h * OUTPUT_SCALE * O_WIDTH + w * OUTPUT_SCALE] = int(data[h * 32 + w]*100);
-    }
-  }
-  for (int h = 0; h < O_HEIGHT; h += OUTPUT_SCALE){
-    for (int w = 1; w < (O_WIDTH-OUTPUT_SCALE); w += OUTPUT_SCALE){
-      for (int i = 0; i < (OUTPUT_SCALE-1); i++){
-        out[h * O_WIDTH + w + i] = (out[h * O_WIDTH + w - 1] * ((OUTPUT_SCALE-1) - i) + out[h * O_WIDTH + w + (OUTPUT_SCALE-1)] * (i + 1)) / OUTPUT_SCALE;
-      }
-    }
-    for (int i = 0; i < (OUTPUT_SCALE-1); i++){
-      out[h * O_WIDTH + (O_WIDTH-OUTPUT_SCALE+1) + i] = out[h * O_WIDTH + (O_WIDTH-OUTPUT_SCALE)];
-    }
-  }
-  for (int w = 0; w < O_WIDTH; w++){
-    for (int h = 1; h < (O_HEIGHT-OUTPUT_SCALE); h += OUTPUT_SCALE){
-      for (int i = 0; i < (OUTPUT_SCALE-1); i++){
-        out[(h + i) * O_WIDTH + w] = (out[(h - 1) * O_WIDTH + w] * ((OUTPUT_SCALE-1) - i) + out[(h + (OUTPUT_SCALE-1)) * O_WIDTH + w] * (i + 1)) / OUTPUT_SCALE;
-      }
-    }
-    for (int i = 0; i < (OUTPUT_SCALE-1); i++){
-      out[((O_HEIGHT-OUTPUT_SCALE+1) + i) * O_WIDTH + w] = out[(O_HEIGHT-OUTPUT_SCALE) * O_WIDTH + w];
-    }
-  }
-  for (int h = 0; h < O_HEIGHT; h++){
-    for (int w = 0; w < O_WIDTH; w++){
-      out[h * O_WIDTH + w] = getColor(out[h * O_WIDTH + w]/100.0);
-      // out[h * O_WIDTH + w] = getColor(10000.0);
-    }
+void convertTempValues(){
+  for (int i=0; i<32*24; i++){
+    tempValues[i] = int(tempValues_raw[i]*100);
   }
 }
 
 
+void bilinear_interpolation(int16_t* input, uint16_t* output) {
+  for (int x=0; x<OUTPUT_WIDTH-(OUTPUT_SCALE-1); x++){
+    for(int y=0; y<OUTPUT_HEIGHT-(OUTPUT_SCALE-1); y++){
 
+      // Step 1: Convert the input x and y coordinates to integer values that represent
+      // the index of the nearest grid point in the input array
+      int x0 = x / OUTPUT_SCALE;
+      int y0 = y / OUTPUT_SCALE;
 
+      // Step 2: Compute the four corner points in the input array that surround the
+      // point to be interpolated, using the indices x0, x0+1, y0, and y0+1
+      int16_t f00 = input[y0 * 32 + x0];
+      int16_t f01 = input[(y0 + 1) * 32 + x0];
+      int16_t f10 = input[y0 * 32 + x0 + 1];
+      int16_t f11 = input[(y0 + 1) * 32 + x0 + 1];
 
+      // Step 3: Compute the weights for the four corner points using the fractional
+      // part of the x and y coordinates
+      int wx = x - x0 * OUTPUT_SCALE;
+      int wy = y - y0 * OUTPUT_SCALE;
+      int w00 = (OUTPUT_SCALE - wx) * (OUTPUT_SCALE - wy);
+      int w01 = (OUTPUT_SCALE - wx) * wy;
+      int w10 = wx * (OUTPUT_SCALE - wy);
+      int w11 = wx * wy;
+
+      // Step 4: Compute the interpolated value using the weighted average of the
+      // four corner points
+      int16_t value = (f00 * w00 + f01 * w01 + f10 * w10 + f11 * w11) / (OUTPUT_SCALE * OUTPUT_SCALE);
+
+      // Step 5: Store the interpolated value in the output array at the corresponding location
+      output[y * (32 * OUTPUT_SCALE) + x] = value;
+    }
+  }
+  for (int i=0; i<OUTPUT_WIDTH*OUTPUT_HEIGHT; i++){
+      output[i] = getColor(output[i]/100);
+  }
+}
 
 void drawPicture() {
   if (INTERPOLATE) {
-    // interpolate();
-    interpolation(tempValues, imageData);
-    // for (y=0; y<O_HEIGHT; y++) {
-    //   for (x=0; x<O_WIDTH; x++) {
-    //     // imageData[(y*O_WIDTH) + x] = getColor(interpolated[y][x]);
-    //     imageData[(y*O_WIDTH) + x] = getColor(interpolatedTempValues[(y*O_WIDTH) + x]);
-    //   }
-    // }
-    // for (y=0; y<O_HEIGHT; y++) {
-    //   for (x=0; x<O_WIDTH; x++) {
-    //     Display.fillRect(8 + x, 8 + y, 1, 1, imageData[y*O_WIDTH + x]);
-    //   }
-    // }    
-    Display.pushImage(8, 8, O_WIDTH, O_HEIGHT, imageData);
+    image.createSprite(OUTPUT_WIDTH-OUTPUT_SCALE+1,OUTPUT_HEIGHT-OUTPUT_SCALE+1);
+    image.setSwapBytes(true);
+    image.pushImage(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT, imageData);
+    image.pushSprite(8, 8);
   }
   else {
-    for (y=0; y<24; y++) {
-      for (x=0; x<32; x++) {
-        Display.fillRect(8 + x*7, 8 + y*7, 7, 7, getColor(tempValues[(31-x) + (y*32)]));
+    for (int y=0; y<24; y++) {
+      for (int x=0; x<32; x++) {
+        Display.fillRect(8 + x*7, 8 + y*7, 7, 7, getColor(tempValues_raw[(31-x) + (y*32)]));
       }
     }
   }
@@ -281,76 +192,43 @@ uint16_t getColor(float val){
   return COLORMAP[colorIndex];
 }
 
-// // Get color for temp value.
-// uint16_t getColor(float val) {
-//   /*
-//     pass in value and figure out R G B
-//     several published ways to do this I basically graphed R G B and developed simple linear equations
-//     again a 5-6-5 color display will not need accurate temp to R G B color calculation
-
-//     equations based on
-//     http://web-tech.ga-usa.com/2012/05/creating-a-custom-hot-to-cold-temperature-color-gradient-for-use-with-rrdtool/index.html
-
-//   */
-
-//   red = constrain(255.0 / (c - b) * val - ((b * 255.0) / (c - b)), 0, 255);
-
-//   if ((val > minTemp) & (val < a)) {
-//     green = constrain(255.0 / (a - minTemp) * val - (255.0 * minTemp) / (a - minTemp), 0, 255);
-//   }
-//   else if ((val >= a) & (val <= c)) {
-//     green = 255;
-//   }
-//   else if (val > c) {
-//     green = constrain(255.0 / (c - d) * val - (d * 255.0) / (c - d), 0, 255);
-//   }
-//   else if ((val > d) | (val < a)) {
-//     green = 0;
-//   }
-
-//   if (val <= b) {
-//     blue = constrain(255.0 / (a - b) * val - (255.0 * b) / (a - b), 0, 255);
-//   }
-//   else if ((val > b) & (val <= d)) {
-//     blue = 0;
-//   }
-//   else if (val > d) {
-//     blue = constrain(240.0 / (maxTemp - d) * val - (d * 240.0) / (maxTemp - d), 0, 240);
-//   }
-
-//   // use the displays color mapping function to get 5-6-5 color palet (R=5 bits, G=6 bits, B-5 bits)
-//   return Display.color565(red, green, blue);
-// }
-
+void generate_colormap(uint8_t p0, uint8_t p1, uint8_t p2){
+  static byte r, g, b;
+  b = 255;
+  for (int i = 0; i<=p0; i++){
+    g = map(i, 0, p0, 0, 255);
+    COLORMAP[i] = Display.color565(r,g,b);
+  }
+  for (int i = p0+1; i<=p1; i++){
+    b = map(-i, -p1, -(p0+1), 0, 255);
+    COLORMAP[i] = Display.color565(r,g,b);
+  }
+  for (int i = p1+1; i<=p2; i++){
+    r = map(i, p1+1, p2, 0, 255);
+    COLORMAP[i] = Display.color565(r,g,b);
+  }
+  for (int i = p2+1; i<=255; i++){
+    g = map(-i, -255, -(p2+1), 0, 255);
+    COLORMAP[i] = Display.color565(r,g,b);
+  }    
+}
 
 void setTempScale() {
   // minTemp = 255;
   // maxTemp = 0;
-
   // for (i = 0; i < 768; i++) {
-  //   minTemp = min(minTemp, tempValues[i]);
-  //   maxTemp = max(maxTemp, tempValues[i]);
+  //   minTemp = min(minTemp, tempValues_raw[i]);
+  //   maxTemp = max(maxTemp, tempValues_raw[i]);
   // }
 
-  setAbcd();
   drawLegend();
 }
-
-
-// Function to get the cutoff points in the temp vs RGB graph.
-void setAbcd() {
-  a = minTemp + (maxTemp - minTemp) * 0.2121;
-  b = minTemp + (maxTemp - minTemp) * 0.3182;
-  c = minTemp + (maxTemp - minTemp) * 0.4242;
-  d = minTemp + (maxTemp - minTemp) * 0.8182;
-}
-
 
 // Draw a legend.
 void drawLegend() {
   float inc = (maxTemp - minTemp) / 224.0;
-  j = 0;
-  for (ii = minTemp; ii < maxTemp; ii += inc) {
+  int j = 0;
+  for (float ii = minTemp; ii < maxTemp; ii += inc) {
     Display.drawFastVLine(8+ + j++, 292, 20, getColor(ii));
   }
 
@@ -375,10 +253,31 @@ void drawMeasurement() {
   Display.drawCircle(120, 8+84, 3, TFT_WHITE);
 
   // Measure and print center temperature
-  centerTemp = (tempValues[383 - 16] + tempValues[383 - 15] + tempValues[384 + 15] + tempValues[384 + 16]) / 4;
-  Display.setCursor(86, 214);
+  centerTemp = (tempValues[383 - 16] + tempValues[383 - 15] + tempValues[384 + 15] + tempValues[384 + 16]) / 400.0;
+  Display.setCursor(8, 170);
   Display.setTextColor(TFT_WHITE, TFT_BLACK);
   Display.setTextFont(2);
   Display.setTextSize(2);
-  Display.print(String(centerTemp).substring(0, 5) + " °C");
+  Display.print("Center: " + String(centerTemp).substring(0, 5) + " C");
+  Display.setCursor(8, 200);
+  Display.print("Max:    " + String(get_maxTemp()).substring(0, 5) + " C");
+  Display.setCursor(8, 230);
+  Display.print("Min:    " +String(get_minTemp()).substring(0, 5) + " C");
+}
+
+float get_maxTemp(){
+  float output = -99999;
+  for (int i = 0; i < 32*24; i++){
+    if(tempValues[i]>output) output = tempValues[i];
+  }
+  return output/100.0;
+}
+
+
+float get_minTemp(){
+  float output = 99999;
+  for (int i = 0; i < 32*24; i++){
+    if(tempValues[i]<output) output = tempValues[i];
+  }
+  return output/100.0;
 }
