@@ -26,7 +26,7 @@ void MLX90640_I2CInit()
 
 //Read a number of words from startAddress. Store into Data array.
 //Returns 0 if successful, -1 if error
-int MLX90640_I2CRead(uint8_t _deviceAddress, unsigned int startAddress, unsigned int nWordsRead, uint16_t *data)
+int MLX90640_I2CRead(uint8_t _deviceAddress, uint16_t startAddress, uint16_t nWordsRead, uint16_t *data)
 {
 
   //Caller passes number of 'unsigned ints to read', increase this to 'bytes to read'
@@ -81,7 +81,7 @@ void MLX90640_I2CFreqSet(int freq)
 }
 
 //Write two bytes to a two byte address
-int MLX90640_I2CWrite(uint8_t _deviceAddress, unsigned int writeAddress, uint16_t data)
+int MLX90640_I2CWrite(uint8_t _deviceAddress, uint16_t writeAddress, uint16_t data)
 {
   Wire.beginTransmission((uint8_t)_deviceAddress);
   Wire.write(writeAddress >> 8); //MSB
