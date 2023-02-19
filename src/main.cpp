@@ -1,50 +1,42 @@
 #include <Arduino.h>
 #include <Wire.h>
-#include <SPI.h>
 #include "MLX90640_API.h"
 #include "MLX90640_I2C_Driver.h"
-#include <TFT_eSPI.h>
+
 #include "colormap.h"
 #include "header.h"
+#include "common.h"
 
-#define EMMISIVITY 0.98
-#define INTERPOLATE true
+// #define USE_DISPLAY
 
-#define min(a,b) ((a)<(b)?(a):(b))
-#define max(a,b) ((a)>(b)?(a):(b))
+#ifdef USE_DISPLAY
+#include "display.h"
+#endif
+
+float emmisivity = 0.98;
+
+bool apply_interpolation = true;
+
+bool apply_filter = true;
+float filter_alpha = 0.5;
+
+int output_scale = 7;
+int output_width = 32 * output_scale;
+int output_height = 24 * output_scale;
+
+bool fixed_scale = true;
+float scale_min = 25.0;
+float scale_max = 35.0;
 
 const byte MLX90640_address = 0x33; //Default 7-bit unshifted address of the MLX90640
 #define TA_SHIFT 8 //Default shift for MLX90640 in open air
 paramsMLX90640 mlx90640;
-
-TFT_eSPI Display = TFT_eSPI();
-TFT_eSprite image = TFT_eSprite(&Display);
-
-// Added for measure Temp
-boolean measure = true;
-float centerTemp;
-
-// start with some initial colors
-float minTemp = 25.0;
-float maxTemp = 35.0;
-
-// Output size
-#define OUTPUT_SCALE 7
-#define OUTPUT_WIDTH 32 * OUTPUT_SCALE
-#define OUTPUT_HEIGHT 24 * OUTPUT_SCALE
 
 // array for the 32 x 24 measured tempValues_raw
 float tempValues_raw[32*24];
 int16_t tempValues[32*24];
 uint16_t *imageData = NULL;
 
-void setup_display(){
-  pinMode(TFT_DC, OUTPUT);
-  SPI.begin();
-  SPI.setFrequency(80000000L);
-  Display.begin();
-  Display.fillScreen(TFT_BLACK);
-}
 
 void setup_mlx90640(){
   Wire.begin();
@@ -67,38 +59,18 @@ void setup_mlx90640(){
   Wire.setClock(800000);
 }
 
-void setup() {
-  Serial.begin(115200);
-  setup_display();
-  setup_mlx90640();
 
-  // generate colormap with cutoff points
-  generate_colormap(64, 128, 192);
-
-  // Prepare imageData array
-  imageData = (uint16_t *)malloc(OUTPUT_WIDTH * OUTPUT_HEIGHT * sizeof(uint16_t));
-  
-  drawLegend();
+void initialize_imageArray(){
+  imageData = (uint16_t *)malloc(output_width * output_height * sizeof(uint16_t));
 }
 
 
-void loop() {
-  readTempValues();
-  filterTempValues(0.5);
-  convertTempValues();
-  setTempScale();
-  bilinear_interpolation(tempValues, imageData);
-  drawPicture();
-  drawMeasurement();
-}
-
-// Read pixel data from MLX90640.
 void readTempValues() {
   for (byte x = 0 ; x < 2 ; x++) // Read both subpages
   {
     uint16_t mlx90640Frame[834];
     int status = MLX90640_GetFrameData(MLX90640_address, mlx90640Frame);
-    // Serial.print(status);Serial.print(", ");
+
     if (status < 0)
     {
       Serial.print("GetFrame Error: ");
@@ -110,13 +82,14 @@ void readTempValues() {
     float Ta = MLX90640_GetTa(mlx90640Frame, &mlx90640);
 
     float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
-    // Serial.print(vdd);Serial.print(", ");Serial.print(Ta);Serial.print(", ");Serial.print(tr);Serial.println("");
-    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, EMMISIVITY, tr, tempValues_raw);
+    // Serial.print(status);Serial.print(", ");Serial.print(vdd);Serial.print(", ");Serial.print(Ta);Serial.print(", ");Serial.print(tr);Serial.println("");
+    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emmisivity, tr, tempValues_raw);
     if((vdd<2.9) || (Ta>50)){
       ESP.restart();
     }
   }
 }
+
 
 void filterTempValues(float alpha){
   static float previous_tempValues_raw[32*24];
@@ -126,6 +99,7 @@ void filterTempValues(float alpha){
   }
 }
 
+
 void convertTempValues(){
   for (int i=0; i<32*24; i++){
     tempValues[i] = int(tempValues_raw[i]*100);
@@ -134,13 +108,13 @@ void convertTempValues(){
 
 
 void bilinear_interpolation(int16_t* input, uint16_t* output) {
-  for (int x=0; x<OUTPUT_WIDTH-(OUTPUT_SCALE-1); x++){
-    for(int y=0; y<OUTPUT_HEIGHT-(OUTPUT_SCALE-1); y++){
+  for (int x=0; x<output_width-(output_scale-1); x++){
+    for(int y=0; y<output_height-(output_scale-1); y++){
 
       // Step 1: Convert the input x and y coordinates to integer values that represent
       // the index of the nearest grid point in the input array
-      int x0 = x / OUTPUT_SCALE;
-      int y0 = y / OUTPUT_SCALE;
+      int x0 = x / output_scale;
+      int y0 = y / output_scale;
 
       // Step 2: Compute the four corner points in the input array that surround the
       // point to be interpolated, using the indices x0, x0+1, y0, and y0+1
@@ -151,120 +125,40 @@ void bilinear_interpolation(int16_t* input, uint16_t* output) {
 
       // Step 3: Compute the weights for the four corner points using the fractional
       // part of the x and y coordinates
-      int wx = x - x0 * OUTPUT_SCALE;
-      int wy = y - y0 * OUTPUT_SCALE;
-      int w00 = (OUTPUT_SCALE - wx) * (OUTPUT_SCALE - wy);
-      int w01 = (OUTPUT_SCALE - wx) * wy;
-      int w10 = wx * (OUTPUT_SCALE - wy);
+      int wx = x - x0 * output_scale;
+      int wy = y - y0 * output_scale;
+      int w00 = (output_scale - wx) * (output_scale - wy);
+      int w01 = (output_scale - wx) * wy;
+      int w10 = wx * (output_scale - wy);
       int w11 = wx * wy;
 
       // Step 4: Compute the interpolated value using the weighted average of the
       // four corner points
-      int16_t value = (f00 * w00 + f01 * w01 + f10 * w10 + f11 * w11) / (OUTPUT_SCALE * OUTPUT_SCALE);
+      int16_t value = (f00 * w00 + f01 * w01 + f10 * w10 + f11 * w11) / (output_scale * output_scale);
 
       // Step 5: Store the interpolated value in the output array at the corresponding location
-      output[y * (32 * OUTPUT_SCALE) + x] = value;
+      output[y * (32 * output_scale) + x] = value;
     }
   }
-  for (int i=0; i<OUTPUT_WIDTH*OUTPUT_HEIGHT; i++){
-      output[i] = getColor(output[i]/100);
+  for (int i=0; i<output_width*output_height; i++){
+      output[i] = getColor(output[i]/100, scale_min, scale_max);
   }
 }
 
-void drawPicture() {
-  if (INTERPOLATE) {
-    image.createSprite(OUTPUT_WIDTH-OUTPUT_SCALE+1,OUTPUT_HEIGHT-OUTPUT_SCALE+1);
-    image.setSwapBytes(true);
-    image.pushImage(0, 0, OUTPUT_WIDTH, OUTPUT_HEIGHT, imageData);
-    image.pushSprite(8, 8);
-  }
-  else {
-    for (int y=0; y<24; y++) {
-      for (int x=0; x<32; x++) {
-        Display.fillRect(8 + x*7, 8 + y*7, 7, 7, getColor(tempValues_raw[(31-x) + (y*32)]));
-      }
-    }
-  }
-}
-
-
-uint16_t getColor(float val){
-  uint8_t colorIndex = map(constrain(val, minTemp, maxTemp)*100, minTemp*100, maxTemp*100, 0, 255);
-  return COLORMAP[colorIndex];
-}
-
-void generate_colormap(uint8_t p0, uint8_t p1, uint8_t p2){
-  static byte r, g, b;
-  b = 255;
-  for (int i = 0; i<=p0; i++){
-    g = map(i, 0, p0, 0, 255);
-    COLORMAP[i] = Display.color565(r,g,b);
-  }
-  for (int i = p0+1; i<=p1; i++){
-    b = map(-i, -p1, -(p0+1), 0, 255);
-    COLORMAP[i] = Display.color565(r,g,b);
-  }
-  for (int i = p1+1; i<=p2; i++){
-    r = map(i, p1+1, p2, 0, 255);
-    COLORMAP[i] = Display.color565(r,g,b);
-  }
-  for (int i = p2+1; i<=255; i++){
-    g = map(-i, -255, -(p2+1), 0, 255);
-    COLORMAP[i] = Display.color565(r,g,b);
-  }    
-}
-
+#ifdef USE_DISPLAY
 void setTempScale() {
-  // minTemp = 255;
-  // maxTemp = 0;
-  // for (i = 0; i < 768; i++) {
-  //   minTemp = min(minTemp, tempValues_raw[i]);
-  //   maxTemp = max(maxTemp, tempValues_raw[i]);
-  // }
-
-  drawLegend();
-}
-
-// Draw a legend.
-void drawLegend() {
-  float inc = (maxTemp - minTemp) / 224.0;
-  int j = 0;
-  for (float ii = minTemp; ii < maxTemp; ii += inc) {
-    Display.drawFastVLine(8+ + j++, 292, 20, getColor(ii));
+  if(!fixed_scale){
+    scale_min = 255;
+    scale_max = 0;
+    for (int i = 0; i < 32*24; i++) {
+      scale_min = min(scale_min, tempValues_raw[i]);
+      scale_max = max(scale_max, tempValues_raw[i]);
+    }
   }
-
-  Display.setTextFont(2);
-  Display.setTextSize(1);
-  Display.setCursor(8, 272);
-  Display.setTextColor(TFT_WHITE, TFT_BLACK);
-  Display.print(String(minTemp).substring(0, 5));
-
-  Display.setCursor(192, 272);
-  Display.setTextColor(TFT_WHITE, TFT_BLACK);
-  Display.print(String(maxTemp).substring(0, 5));
-
-  Display.setTextFont(NULL);
+  drawLegend(scale_min, scale_max);
 }
+#endif
 
-
-// Draw a circle + measured value.
-void drawMeasurement() {
-
-  // Mark center measurement
-  Display.drawCircle(120, 8+84, 3, TFT_WHITE);
-
-  // Measure and print center temperature
-  centerTemp = (tempValues[383 - 16] + tempValues[383 - 15] + tempValues[384 + 15] + tempValues[384 + 16]) / 400.0;
-  Display.setCursor(8, 170);
-  Display.setTextColor(TFT_WHITE, TFT_BLACK);
-  Display.setTextFont(2);
-  Display.setTextSize(2);
-  Display.print("Center: " + String(centerTemp).substring(0, 5) + " C");
-  Display.setCursor(8, 200);
-  Display.print("Max:    " + String(get_maxTemp()).substring(0, 5) + " C");
-  Display.setCursor(8, 230);
-  Display.print("Min:    " +String(get_minTemp()).substring(0, 5) + " C");
-}
 
 float get_maxTemp(){
   float output = -99999;
@@ -281,4 +175,48 @@ float get_minTemp(){
     if(tempValues[i]<output) output = tempValues[i];
   }
   return output/100.0;
+}
+
+
+float get_centerTemp(){
+  return (tempValues[383 - 16] + tempValues[383 - 15] + tempValues[384 + 15] + tempValues[384 + 16]) / 400.0;
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  setup_mlx90640();
+  generate_colormap(64, 128, 192);
+  #ifdef USE_DISPLAY
+  setup_display();
+  drawLegend(scale_min, scale_max);
+  #endif
+  initialize_imageArray();
+}
+
+
+void loop() {
+  readTempValues();
+  if(apply_filter){
+    filterTempValues(filter_alpha);
+  }
+  convertTempValues();
+  #ifdef USE_DISPLAY
+  setTempScale();
+  if(apply_interpolation){
+    bilinear_interpolation(tempValues, imageData);
+    drawPicture_interpolated(output_width, output_height, output_scale, imageData);
+  }
+  else{
+    drawPicture_pixelated(output_scale, tempValues_raw);
+  }
+  drawMeasurement(get_centerTemp(), get_maxTemp(), get_minTemp());
+  #endif
+  #ifndef USE_DISPLAY
+  Serial.print("Center: ");Serial.println(get_centerTemp());
+  Serial.print("Max:    ");Serial.println(get_maxTemp());
+  Serial.print("Min:    ");Serial.println(get_minTemp());
+  Serial.println("#################");
+  #endif
+
 }
