@@ -47,7 +47,6 @@ void drawMeasurement(float centerTemp, float maxTemp, float minTemp) {
   Display.print("Min:    " +String(minTemp).substring(0, 5) + " C");
 }
 
-
 // Draw a legend.
 void drawLegend(float min_value, float max_value) {
   float inc = (max_value - min_value) / 224.0;
@@ -67,4 +66,13 @@ void drawLegend(float min_value, float max_value) {
   Display.print(String(max_value).substring(0, 5));
 
   Display.setTextFont(NULL);
+}
+
+void drawButtonMode(int buttonMode){
+
+  Display.setTextFont(1);
+  Display.setTextSize(1);
+  Display.setCursor(8, 8);
+  Display.setTextColor(TFT_WHITE, TFT_TRANSPARENT);
+  Display.print(String(buttonMode));
 }

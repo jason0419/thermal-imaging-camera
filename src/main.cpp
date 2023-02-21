@@ -7,11 +7,15 @@
 #include "header.h"
 #include "common.h"
 
-// #define USE_DISPLAY
+#define USE_DISPLAY
 
 #ifdef USE_DISPLAY
 #include "display.h"
 #endif
+
+#define PIN_BUTTON_1 34
+#define PIN_BUTTON_2 33
+#define PIN_BUTTON_3 35
 
 float emmisivity = 0.98;
 
@@ -36,6 +40,12 @@ paramsMLX90640 mlx90640;
 float tempValues_raw[32*24];
 int16_t tempValues[32*24];
 uint16_t *imageData = NULL;
+
+void setup_buttons(){
+  pinMode(PIN_BUTTON_1, PULLUP);
+  pinMode(PIN_BUTTON_2, PULLUP);
+  pinMode(PIN_BUTTON_3, PULLUP);
+}
 
 
 void setup_mlx90640(){
@@ -196,6 +206,8 @@ void setup() {
 
 
 void loop() {
+
+  static int buttonMode;
   readTempValues();
   if(apply_filter){
     filterTempValues(filter_alpha);
@@ -211,6 +223,7 @@ void loop() {
     drawPicture_pixelated(output_scale, tempValues_raw);
   }
   drawMeasurement(get_centerTemp(), get_maxTemp(), get_minTemp());
+  drawButtonMode(buttonMode);
   #endif
   #ifndef USE_DISPLAY
   Serial.print("Center: ");Serial.println(get_centerTemp());
@@ -218,5 +231,69 @@ void loop() {
   Serial.print("Min:    ");Serial.println(get_minTemp());
   Serial.println("#################");
   #endif
+
+  if(!analogRead(PIN_BUTTON_2)){
+    delay(50);
+    if(!analogRead(PIN_BUTTON_2)){
+      buttonMode+=1;
+      buttonMode = buttonMode%3;
+      delay(50);
+    }  
+  }
+
+  if (buttonMode==0){
+    if(!analogRead(PIN_BUTTON_1)){
+      delay(50);
+      if(!analogRead(PIN_BUTTON_1)){
+        fixed_scale = false;
+        delay(50);
+      }  
+    }    
+    if(!analogRead(PIN_BUTTON_3)){
+      delay(50);
+      if(!analogRead(PIN_BUTTON_3)){
+        fixed_scale = true;
+        scale_min = 25.0;
+        scale_max = 35.0;
+        delay(50);
+      }  
+    }    
+  }
+
+  if (buttonMode==1){
+    if(!analogRead(PIN_BUTTON_1)){
+      delay(50);
+      if(!analogRead(PIN_BUTTON_1)){
+        scale_min -= 1.0;
+        delay(50);
+      }  
+    }    
+    if(!analogRead(PIN_BUTTON_3)){
+      delay(50);
+      if(!analogRead(PIN_BUTTON_3)){
+        scale_min = min(scale_min+1, scale_max-1);
+        delay(50);
+      }  
+    }    
+  }
+
+  if (buttonMode==2){
+    if(!analogRead(PIN_BUTTON_1)){
+      delay(50);
+      if(!analogRead(PIN_BUTTON_1)){
+        scale_max = max(scale_min+1, scale_max-1);
+        delay(50);
+      }  
+    }    
+    if(!analogRead(PIN_BUTTON_3)){
+      delay(50);
+      if(!analogRead(PIN_BUTTON_3)){
+        scale_max += 1.0;
+        delay(50);
+      }  
+    }    
+  }
+
+
 
 }
