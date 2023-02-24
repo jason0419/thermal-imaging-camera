@@ -18,6 +18,7 @@ void drawPicture_interpolated(int output_width, int output_height, int output_sc
   image.createSprite(output_width-output_scale+1,output_height-output_scale+1);
   image.setSwapBytes(true);
   image.pushImage(0, 0, output_width, output_height, imageData);
+  image.drawCircle(output_width/2, output_height/2, 3, TFT_WHITE);
   image.pushSprite(8, 18);
 
 }
@@ -31,11 +32,6 @@ void drawPicture_pixelated(int output_scale, float * tempValues_raw) {
 }
 
 void drawMeasurement(float centerTemp, float maxTemp, float minTemp) {
-
-  // Mark center measurement
-  Display.drawCircle(120, 18+84, 3, TFT_WHITE);
-
-  // Measure and print center temperature
   Display.setCursor(8, 180);
   Display.setTextColor(TFT_WHITE, TFT_BLACK);
   Display.setTextFont(2);
