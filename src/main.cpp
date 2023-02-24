@@ -1,4 +1,3 @@
-// TODO: clean up button functionalities, add button for emissivity, add display info
 #include <Arduino.h>
 #include <Wire.h>
 #include "MLX90640_API.h"
