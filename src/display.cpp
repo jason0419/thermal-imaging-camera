@@ -18,14 +18,14 @@ void drawPicture_interpolated(int output_width, int output_height, int output_sc
   image.createSprite(output_width-output_scale+1,output_height-output_scale+1);
   image.setSwapBytes(true);
   image.pushImage(0, 0, output_width, output_height, imageData);
-  image.pushSprite(8, 8);
+  image.pushSprite(8, 18);
 
 }
 
 void drawPicture_pixelated(int output_scale, float * tempValues_raw) {
   for (int y=0; y<24; y++) {
     for (int x=0; x<32; x++) {
-      Display.fillRect(8 + x*output_scale, 8 + y*output_scale, output_scale, output_scale, getColor(tempValues_raw[(31-x) + (y*32)], scale_min, scale_max));
+      Display.fillRect(8 + x*output_scale, 18 + y*output_scale, output_scale, output_scale, getColor(tempValues_raw[(31-x) + (y*32)], scale_min, scale_max));
     }
   }
 }
@@ -33,17 +33,17 @@ void drawPicture_pixelated(int output_scale, float * tempValues_raw) {
 void drawMeasurement(float centerTemp, float maxTemp, float minTemp) {
 
   // Mark center measurement
-  Display.drawCircle(120, 8+84, 3, TFT_WHITE);
+  Display.drawCircle(120, 18+84, 3, TFT_WHITE);
 
   // Measure and print center temperature
-  Display.setCursor(8, 170);
+  Display.setCursor(8, 180);
   Display.setTextColor(TFT_WHITE, TFT_BLACK);
   Display.setTextFont(2);
   Display.setTextSize(2);
   Display.print("Center: " + String(centerTemp).substring(0, 5) + " C");
-  Display.setCursor(8, 200);
+  Display.setCursor(8, 210);
   Display.print("Max:    " + String(maxTemp).substring(0, 5) + " C");
-  Display.setCursor(8, 230);
+  Display.setCursor(8, 240);
   Display.print("Min:    " +String(minTemp).substring(0, 5) + " C");
 }
 
@@ -69,10 +69,19 @@ void drawLegend(float min_value, float max_value) {
 }
 
 void drawButtonMode(int buttonMode){
-
+  String mode_description[3] = {"Emissivity", "Scale_Min ", "Scale_Max "};
   Display.setTextFont(1);
   Display.setTextSize(1);
   Display.setCursor(8, 8);
-  Display.setTextColor(TFT_WHITE, TFT_TRANSPARENT);
-  Display.print(String(buttonMode));
+  Display.setTextColor(TFT_WHITE, TFT_BLACK);
+  Display.print(mode_description[buttonMode]);
+}
+
+
+void drawInfo(String info){
+  Display.setTextFont(1);
+  Display.setTextSize(1);
+  Display.setCursor(200, 8);
+  Display.setTextColor(TFT_WHITE, TFT_BLACK);
+  Display.print(info);
 }

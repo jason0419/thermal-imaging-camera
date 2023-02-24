@@ -16,6 +16,6 @@ void drawPicture_pixelated(int output_scale, float * tempValues_raw);
 void drawMeasurement(float centerTemp, float maxTemp, float minTemp) ;
 void drawLegend(float min_value, float max_value) ;
 void drawButtonMode(int buttonMode);
-
+void drawInfo(String);
 
 #endif

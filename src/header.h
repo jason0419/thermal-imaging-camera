@@ -14,5 +14,6 @@ void setTempScale();
 float get_maxTemp();
 float get_minTemp();
 float get_centerTemp();
+bool button_pressed(int, int);
 
 #endif

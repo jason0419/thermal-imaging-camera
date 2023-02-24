@@ -1,3 +1,4 @@
+// TODO: clean up button functionalities, add button for emissivity, add display info
 #include <Arduino.h>
 #include <Wire.h>
 #include "MLX90640_API.h"
@@ -13,11 +14,11 @@
 #include "display.h"
 #endif
 
-#define PIN_BUTTON_1 34
-#define PIN_BUTTON_2 33
-#define PIN_BUTTON_3 35
+#define PIN_BUTTON_1 32
+#define PIN_BUTTON_2 25
+#define PIN_BUTTON_3 26
 
-float emmisivity = 0.98;
+float emissivity = 0.98;
 
 bool apply_interpolation = true;
 
@@ -42,9 +43,9 @@ int16_t tempValues[32*24];
 uint16_t *imageData = NULL;
 
 void setup_buttons(){
-  pinMode(PIN_BUTTON_1, PULLUP);
-  pinMode(PIN_BUTTON_2, PULLUP);
-  pinMode(PIN_BUTTON_3, PULLUP);
+  pinMode(PIN_BUTTON_1, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_2, INPUT_PULLUP);
+  pinMode(PIN_BUTTON_3, INPUT_PULLUP);
 }
 
 
@@ -93,7 +94,7 @@ void readTempValues() {
 
     float tr = Ta - TA_SHIFT; //Reflected temperature based on the sensor ambient temperature
     // Serial.print(status);Serial.print(", ");Serial.print(vdd);Serial.print(", ");Serial.print(Ta);Serial.print(", ");Serial.print(tr);Serial.println("");
-    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emmisivity, tr, tempValues_raw);
+    MLX90640_CalculateTo(mlx90640Frame, &mlx90640, emissivity, tr, tempValues_raw);
     if((vdd<2.9) || (Ta>50)){
       ESP.restart();
     }
@@ -111,8 +112,10 @@ void filterTempValues(float alpha){
 
 
 void convertTempValues(){
-  for (int i=0; i<32*24; i++){
-    tempValues[i] = int(tempValues_raw[i]*100);
+  for (int row=0; row<24; row++){
+    for (int col=0; col<32; col++){
+      tempValues[row*32 + col] = int(tempValues_raw[row*32+(31-col)]*100);
+    }
   }
 }
 
@@ -224,6 +227,7 @@ void loop() {
   }
   drawMeasurement(get_centerTemp(), get_maxTemp(), get_minTemp());
   drawButtonMode(buttonMode);
+  drawInfo(String(emissivity));
   #endif
   #ifndef USE_DISPLAY
   Serial.print("Center: ");Serial.println(get_centerTemp());
@@ -232,68 +236,46 @@ void loop() {
   Serial.println("#################");
   #endif
 
-  if(!analogRead(PIN_BUTTON_2)){
-    delay(50);
-    if(!analogRead(PIN_BUTTON_2)){
-      buttonMode+=1;
-      buttonMode = buttonMode%3;
-      delay(50);
-    }  
+  if(button_pressed(PIN_BUTTON_2, 20)){
+    buttonMode+=1;
+    buttonMode = buttonMode%3;    
   }
 
   if (buttonMode==0){
-    if(!analogRead(PIN_BUTTON_1)){
-      delay(50);
-      if(!analogRead(PIN_BUTTON_1)){
-        fixed_scale = false;
-        delay(50);
-      }  
-    }    
-    if(!analogRead(PIN_BUTTON_3)){
-      delay(50);
-      if(!analogRead(PIN_BUTTON_3)){
-        fixed_scale = true;
-        scale_min = 25.0;
-        scale_max = 35.0;
-        delay(50);
-      }  
-    }    
+    if(button_pressed(PIN_BUTTON_1, 20)){
+      emissivity = max(0.00, emissivity-0.01);
+    }
+    if(button_pressed(PIN_BUTTON_3, 20)){
+      emissivity = max(0.00, emissivity+0.01);
+    }
   }
 
   if (buttonMode==1){
-    if(!analogRead(PIN_BUTTON_1)){
-      delay(50);
-      if(!analogRead(PIN_BUTTON_1)){
-        scale_min -= 1.0;
-        delay(50);
-      }  
-    }    
-    if(!analogRead(PIN_BUTTON_3)){
-      delay(50);
-      if(!analogRead(PIN_BUTTON_3)){
-        scale_min = min(scale_min+1, scale_max-1);
-        delay(50);
-      }  
-    }    
+    if(button_pressed(PIN_BUTTON_1, 20)){
+      scale_min -= 1.0;
+    }
+    if(button_pressed(PIN_BUTTON_3, 20)){
+      scale_min = min(scale_min+1, scale_max-1);
+    }
   }
 
   if (buttonMode==2){
-    if(!analogRead(PIN_BUTTON_1)){
-      delay(50);
-      if(!analogRead(PIN_BUTTON_1)){
-        scale_max = max(scale_min+1, scale_max-1);
-        delay(50);
-      }  
-    }    
-    if(!analogRead(PIN_BUTTON_3)){
-      delay(50);
-      if(!analogRead(PIN_BUTTON_3)){
-        scale_max += 1.0;
-        delay(50);
-      }  
-    }    
+    if(button_pressed(PIN_BUTTON_1, 20)){
+      scale_max = max(scale_min+1, scale_max-1);
+    }
+    if(button_pressed(PIN_BUTTON_3, 20)){
+      scale_max += 1.0;
+    }
   }
 
+}
 
-
+bool button_pressed(int pin, int delay_ms){
+  if(!analogRead(pin)){
+    delay(delay_ms);
+    if(!analogRead(pin)){
+      return true;
+    }  
+  }      
+  return false;
 }
