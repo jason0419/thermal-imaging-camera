@@ -114,11 +114,6 @@ uint8_t ThermalCamera::get_output_ratio(){
 }
 
 void ThermalCamera::get_image_rgb565(uint16_t* imageData) {
-  // convert input temperature to int16 (in 0.01 degrees Kelvin)
-  int16_t input[32*24];
-  for (int i=0; i<32*24; i++){
-    input[i] = (int16_t) (temperature[i]*100) + 27315;
-  }
 
   // interpolation
   for (int x=0; x<32*output_ratio-(output_ratio-1); x++){
@@ -131,10 +126,10 @@ void ThermalCamera::get_image_rgb565(uint16_t* imageData) {
 
       // Step 2: Compute the four corner points in the input array that surround the
       // point to be interpolated, using the indices x0, x0+1, y0, and y0+1
-      int16_t f00 = input[y0 * 32 + x0];
-      int16_t f01 = input[(y0 + 1) * 32 + x0];
-      int16_t f10 = input[y0 * 32 + x0 + 1];
-      int16_t f11 = input[(y0 + 1) * 32 + x0 + 1];
+      int16_t f00 = temperature[y0 * 32 + x0]*100 + 27315;
+      int16_t f01 = temperature[(y0 + 1) * 32 + x0]*100 + 27315;
+      int16_t f10 = temperature[y0 * 32 + x0 + 1]*100 + 27315;
+      int16_t f11 = temperature[(y0 + 1) * 32 + x0 + 1]*100 + 27315;
 
       // Step 3: Compute the weights for the four corner points using the fractional
       // part of the x and y coordinates
