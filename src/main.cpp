@@ -20,6 +20,8 @@ uint16_t* imageData = (uint16_t*)malloc(32*output_ratio*24*output_ratio*sizeof(u
 
 ThermalCamera thermalCamera = ThermalCamera();
 
+bool apply_interpolation = true;
+
 void setup_buttons(){
   pinMode(PIN_BUTTON_1, INPUT_PULLUP);
   pinMode(PIN_BUTTON_2, INPUT_PULLUP);
@@ -42,7 +44,8 @@ void loop() {
   thermalCamera.hflip();
   #ifdef USE_DISPLAY
   drawLegend(thermalCamera.get_scale_min(), thermalCamera.get_scale_max());
-  thermalCamera.get_image_rgb565(imageData);
+  if(apply_interpolation) thermalCamera.get_image_rgb565(imageData);
+  else thermalCamera.get_image_pixelated_rgb565(imageData);
   drawPicture_interpolated(32*output_ratio, 24*output_ratio, output_ratio, imageData);
   drawMeasurement(thermalCamera.get_center_temperature(), thermalCamera.get_max_temperature(), thermalCamera.get_min_temperature());
   drawButtonMode(buttonMode);
@@ -50,6 +53,10 @@ void loop() {
   else if (buttonMode==1) drawInfo(String(thermalCamera.get_scale_min()));
   else if (buttonMode==2) drawInfo(String(thermalCamera.get_scale_max()));
   else if (buttonMode==3) drawInfo(String(thermalCamera.get_filter_alpha()));
+  else if (buttonMode==4){
+    if(apply_interpolation) drawInfo("True ");
+    else drawInfo("False");
+  } 
   #endif
   #ifndef USE_DISPLAY
   Serial.print("Center: ");Serial.println(thermalCamera.get_center_temperature());
@@ -60,7 +67,7 @@ void loop() {
 
   if(button_pressed(PIN_BUTTON_2, 20)){
     buttonMode+=1;
-    buttonMode = buttonMode%4;    
+    buttonMode = buttonMode%5;    
   }
 
   if (buttonMode==0){
@@ -96,6 +103,15 @@ void loop() {
     }
     if(button_pressed(PIN_BUTTON_3, 20)){
       thermalCamera.set_filter_alpha(thermalCamera.get_filter_alpha()+0.01);
+    }
+  }
+
+  if (buttonMode==4){
+    if(button_pressed(PIN_BUTTON_1, 20)){
+      apply_interpolation=false;
+    }
+    if(button_pressed(PIN_BUTTON_3, 20)){
+      apply_interpolation=true;
     }
   }
 

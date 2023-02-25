@@ -147,6 +147,44 @@ void ThermalCamera::get_image_rgb565(uint16_t* imageData) {
 }
 
 
+void ThermalCamera::get_image_pixelated_rgb565(uint16_t* imageData) {
+
+  // interpolation
+  for (int x=0; x<32*output_ratio-(output_ratio-1); x++){
+    for(int y=0; y<24*output_ratio-(output_ratio-1); y++){
+
+      // Step 1: Convert the input x and y coordinates to integer values that represent
+      // the index of the nearest grid point in the input array
+      int x0 = x / output_ratio;
+      int y0 = y / output_ratio;
+
+      // Step 2: Compute the four corner points in the input array that surround the
+      // point to be interpolated, using the indices x0, x0+1, y0, and y0+1
+      int16_t f00 = temperature[y0 * 32 + x0]*100;
+      // int16_t f01 = temperature[(y0 + 1) * 32 + x0]*100;
+      // int16_t f10 = temperature[y0 * 32 + x0 + 1]*100;
+      // int16_t f11 = temperature[(y0 + 1) * 32 + x0 + 1]*100;
+
+      // Step 3: Compute the weights for the four corner points using the fractional
+      // part of the x and y coordinates
+      // int wx = x - x0 * output_ratio;
+      // int wy = y - y0 * output_ratio;
+      // int w00 = (output_ratio - wx) * (output_ratio - wy);
+      // int w01 = 0;
+      // int w10 = 0;
+      // int w11 = 0;
+
+      // Step 4: Compute the interpolated value using the weighted average of the
+      // four corner points
+      int16_t value = f00;
+
+      // Step 5: Convert to RGB565 and store in imageData
+      imageData[y * (32 * output_ratio) + x] = getColor(value/100, scale_min, scale_max);
+    }
+  }
+}
+
+
 uint16_t ThermalCamera::getColor(float val, float min, float max){
     uint8_t colorIndex = map(constrain(val, min, max)*100, min*100, max*100, 0, 255);
     return colormap[colorIndex];

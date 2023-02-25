@@ -21,6 +21,7 @@ class ThermalCamera {
     float get_filter_alpha();
     uint8_t get_output_ratio();
     void get_image_rgb565(uint16_t * imageData);
+    void get_image_pixelated_rgb565(uint16_t * imageData);
     void get_image_jpeg(uint16_t * imageData);
     uint16_t getColor(float val, float min, float max);
     void hflip();
