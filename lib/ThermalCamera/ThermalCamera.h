@@ -2,12 +2,14 @@
 #define THERMALCAMERA1_H
 
 #include <Arduino.h>
+#include "MLX90640_API.h"
+#include "MLX90640_I2C_Driver.h"
 
 class ThermalCamera {
   public:
     ThermalCamera(); // Constructor
     void initialize(int pin_sda, int pin_scl, uint8_t _i2c_address);
-    void read_temperature(float* _temperature);
+    void get_temperature(float* _temperature);
     void set_emissivity(float _emissivity);
     void set_scale_min(float _scale_min);
     void set_scale_max(float _scale_max);
@@ -22,6 +24,10 @@ class ThermalCamera {
     void get_image_jpeg(uint16_t * imageData);
     uint16_t getColor(float val, float min, float max);
     void hflip();
+    float get_center_temperature();
+    float get_max_temperature();
+    float get_min_temperature();
+    paramsMLX90640 mlx90640;
     
   private:
     uint8_t i2c_address;

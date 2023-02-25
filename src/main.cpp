@@ -26,29 +26,6 @@ void setup_buttons(){
   pinMode(PIN_BUTTON_3, INPUT_PULLUP);
 }
 
-
-
-float get_maxTemp(){
-  float output = -99999;
-  for (int i = 0; i < 32*24; i++){
-    if(temperature[i]>output) output = temperature[i];
-  }
-  return output;
-}
-
-
-float get_minTemp(){
-  float output = 99999;
-  for (int i = 0; i < 32*24; i++){
-    if(temperature[i]<output) output = temperature[i];
-  }
-  return output;
-}
-
-float get_centerTemp(){
-  return (temperature[383 - 16] + temperature[383 - 15] + temperature[384 + 15] + temperature[384 + 16]) / 4.0;
-}
-
 void setup() {
   Serial.begin(115200);
   thermalCamera.initialize(PIN_SDA, PIN_SCL, 0x33);
@@ -59,29 +36,31 @@ void setup() {
   #endif
 }
 
-
 void loop() {
   static int buttonMode;
-  thermalCamera.read_temperature(temperature);
+  thermalCamera.get_temperature(temperature);
   thermalCamera.hflip();
   #ifdef USE_DISPLAY
   drawLegend(thermalCamera.get_scale_min(), thermalCamera.get_scale_max());
   thermalCamera.get_image_rgb565(imageData);
   drawPicture_interpolated(32*output_ratio, 24*output_ratio, output_ratio, imageData);
-  drawMeasurement(get_centerTemp(), get_maxTemp(), get_minTemp());
+  drawMeasurement(thermalCamera.get_center_temperature(), thermalCamera.get_max_temperature(), thermalCamera.get_min_temperature());
   drawButtonMode(buttonMode);
-  drawInfo(String(thermalCamera.get_emissivity()));
+  if(buttonMode==0) drawInfo(String(thermalCamera.get_emissivity()));
+  else if (buttonMode==1) drawInfo(String(thermalCamera.get_scale_min()));
+  else if (buttonMode==2) drawInfo(String(thermalCamera.get_scale_max()));
+  else if (buttonMode==3) drawInfo(String(thermalCamera.get_filter_alpha()));
   #endif
   #ifndef USE_DISPLAY
-  Serial.print("Center: ");Serial.println(get_centerTemp());
-  Serial.print("Max:    ");Serial.println(get_maxTemp());
-  Serial.print("Min:    ");Serial.println(get_minTemp());
+  Serial.print("Center: ");Serial.println(thermalCamera.get_center_temperature());
+  Serial.print("Max:    ");Serial.println(thermalCamera.get_max_temperature());
+  Serial.print("Min:    ");Serial.println(thermalCamera.get_min_temperature());
   Serial.println("#################");
   #endif
 
   if(button_pressed(PIN_BUTTON_2, 20)){
     buttonMode+=1;
-    buttonMode = buttonMode%3;    
+    buttonMode = buttonMode%4;    
   }
 
   if (buttonMode==0){
@@ -108,6 +87,15 @@ void loop() {
     }
     if(button_pressed(PIN_BUTTON_3, 20)){
       thermalCamera.set_scale_max(thermalCamera.get_scale_max()+1);
+    }
+  }
+
+  if (buttonMode==3){
+    if(button_pressed(PIN_BUTTON_1, 20)){
+      thermalCamera.set_filter_alpha(thermalCamera.get_filter_alpha()-0.01);
+    }
+    if(button_pressed(PIN_BUTTON_3, 20)){
+      thermalCamera.set_filter_alpha(thermalCamera.get_filter_alpha()+0.01);
     }
   }
 

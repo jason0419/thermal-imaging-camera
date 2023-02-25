@@ -1,18 +1,14 @@
 #include "ThermalCamera.h"
 #include <Wire.h>
-#include "MLX90640_API.h"
-#include "MLX90640_I2C_Driver.h"
 #include <TFT_eSPI.h>  // for color565 function
 
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
 
 #define TA_SHIFT 8 //Default shift for MLX90640 in open air
-paramsMLX90640 mlx90640;
 
-ThermalCamera::ThermalCamera(){
 
-}
+ThermalCamera::ThermalCamera(){}
 
 void ThermalCamera::initialize(int pin_sda, int pin_scl, uint8_t _i2c_address){
   // I2C connection
@@ -42,7 +38,7 @@ void ThermalCamera::initialize(int pin_sda, int pin_scl, uint8_t _i2c_address){
   temperature = (float *)malloc(32*24*sizeof(float));
 }
 
-void ThermalCamera::read_temperature(float* _temperature) {
+void ThermalCamera::get_temperature(float* _temperature) {
   for (byte x = 0 ; x < 2 ; x++){
     uint16_t mlx90640Frame[834];
     int status = MLX90640_GetFrameData(i2c_address, mlx90640Frame);
@@ -74,7 +70,7 @@ void ThermalCamera::filter_temperature(){
 }
 
 void ThermalCamera::set_emissivity(float _emissivity){
-  emissivity = constrain(_emissivity, 0.00, 1.00);
+  emissivity = constrain(_emissivity, 0.01, 1.00);
 }
 
 void ThermalCamera::set_scale_min(float _scale_min){
@@ -90,7 +86,7 @@ void ThermalCamera::set_output_ratio(uint8_t _output_ratio){
 }
 
 void ThermalCamera::set_filter_alpha(float _filter_alpha){
-  filter_alpha = _filter_alpha;
+  filter_alpha = constrain(_filter_alpha, 0.01, 1.00);
 }
 
 float ThermalCamera::get_emissivity(){
@@ -126,10 +122,10 @@ void ThermalCamera::get_image_rgb565(uint16_t* imageData) {
 
       // Step 2: Compute the four corner points in the input array that surround the
       // point to be interpolated, using the indices x0, x0+1, y0, and y0+1
-      int16_t f00 = temperature[y0 * 32 + x0]*100 + 27315;
-      int16_t f01 = temperature[(y0 + 1) * 32 + x0]*100 + 27315;
-      int16_t f10 = temperature[y0 * 32 + x0 + 1]*100 + 27315;
-      int16_t f11 = temperature[(y0 + 1) * 32 + x0 + 1]*100 + 27315;
+      int16_t f00 = temperature[y0 * 32 + x0]*100;
+      int16_t f01 = temperature[(y0 + 1) * 32 + x0]*100;
+      int16_t f10 = temperature[y0 * 32 + x0 + 1]*100;
+      int16_t f11 = temperature[(y0 + 1) * 32 + x0 + 1]*100;
 
       // Step 3: Compute the weights for the four corner points using the fractional
       // part of the x and y coordinates
@@ -144,13 +140,9 @@ void ThermalCamera::get_image_rgb565(uint16_t* imageData) {
       // four corner points
       int16_t value = (f00 * w00 + f01 * w01 + f10 * w10 + f11 * w11) / (output_ratio * output_ratio);
 
-      // Step 5: Store the interpolated value in the output array at the corresponding location
-      imageData[y * (32 * output_ratio) + x] = value;
+      // Step 5: Convert to RGB565 and store in imageData
+      imageData[y * (32 * output_ratio) + x] = getColor(value/100, scale_min, scale_max);
     }
-  }
-  // convert to imageData (RGB565)
-  for (int i=0; i<32*output_ratio*24*output_ratio; i++){
-    imageData[i] = getColor(imageData[i]/100.0 - 273.15, scale_min, scale_max);
   }
 }
 
@@ -191,4 +183,25 @@ void ThermalCamera::hflip(){
       temperature[i*32+31-j] = temp;
     }
   }
+}
+
+
+float ThermalCamera::get_center_temperature(){
+  return (temperature[383 - 16] + temperature[383 - 15] + temperature[384 + 15] + temperature[384 + 16]) / 4.0;
+}
+
+float ThermalCamera::get_max_temperature(){
+  float output = -99999;
+  for (int i = 0; i < 32*24; i++){
+    if(temperature[i]>output) output = temperature[i];
+  }
+  return output;  
+}
+
+float ThermalCamera::get_min_temperature(){
+  float output = 99999;
+  for (int i = 0; i < 32*24; i++){
+    if(temperature[i]<output) output = temperature[i];
+  }
+  return output;  
 }

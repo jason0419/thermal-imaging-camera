@@ -57,7 +57,7 @@ void drawLegend(float min_value, float max_value) {
 }
 
 void drawButtonMode(int buttonMode){
-  String mode_description[3] = {"Emissivity", "Scale_Min ", "Scale_Max "};
+  String mode_description[4] = {"Emissivity  ", "Scale_Min   ", "Scale_Max   ", "Filter Alpha"};
   Display.setTextFont(1);
   Display.setTextSize(1);
   Display.setCursor(8, 8);
