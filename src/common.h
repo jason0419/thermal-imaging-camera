@@ -4,6 +4,7 @@
 #define min(a,b) ((a)<(b)?(a):(b))
 #define max(a,b) ((a)>(b)?(a):(b))
 
-extern float scale_max, scale_min;
+#include "ThermalCamera.h"
+extern ThermalCamera thermalCamera;
 
 #endif 
